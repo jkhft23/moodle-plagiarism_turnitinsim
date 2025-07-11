@@ -131,7 +131,7 @@ class plagiarism_plugin_turnitinsim extends plagiarism_plugin {
                 $mform->setDefault($element, $value);
             }
         }
-        
+
         $hassettings = true;
     }
 
@@ -213,6 +213,12 @@ class plagiarism_plugin_turnitinsim extends plagiarism_plugin {
              context_module::instance($cm->id)
         );
 
+                // Check if the logged in user is an student.
+        $student = has_capability(
+            'plagiarism/turnitinsim:viewreport',
+             context_module::instance($cm->id)
+        );
+
         // Get the user ID for a quiz submission as it does not exist in the linkarray.
         if (!empty($linkarray['file']) && $cm->modname == "quiz") {
             $linkarray['userid'] = $DB->get_record(
@@ -246,7 +252,7 @@ class plagiarism_plugin_turnitinsim extends plagiarism_plugin {
 
                 // If the user is a student and they are not allowed to view reports,
                 // and they have accepted the EULA then return empty output.
-                if (!$instructor && empty($plagiarismsettings->accessstudents) &&
+                if (!$instructor && $student && empty($plagiarismsettings->accessstudents) &&
                     $submission->getstatus() !== TURNITINSIM_SUBMISSION_STATUS_EULA_NOT_ACCEPTED) {
                     return $output;
                 }
@@ -363,8 +369,25 @@ class plagiarism_plugin_turnitinsim extends plagiarism_plugin {
             // Render a resubmit link for instructors if necessary.
             $resubmitlink = ($instructor && $showresubmitlink) ? $this->render_resubmit_link($submission->getid()) : '';
 
+            //$context = $questions->get_owning_context();
+            $trainer_role = $DB->get_record('role', array('shortname' => 'editingteacher'));
+            $isTrainer = 0;
+            $courseid = $cm->course;;
+            $context = context_course::instance($courseid);
+            if ($trainer_role && user_has_role_assignment($USER->id, $trainer_role->id,  $context->id)) {
+            // User has trainer role
+            //echo "This user is a trainer";
+               $isTrainer = 1;
+            }
+           $isOwner = 0;
+           if ($submission->getuserid() == $USER->id) { $isOwner = 1; }
+                //echo "is trainer?";
+                //echo $isTrainer;
+                //echo "and context";
+                //echo $courseid;
+
             // Output rendered status and resubmission link if applicable.
-            if ($instructor || (!$instructor && $plagiarismsettings->accessstudents)) {
+            if ($instructor || (!$instructor && !$isTrainer && $student && $plagiarismsettings->accessstudents)) {
                 $output .= html_writer::tag('div', $eulaconfirm . $turnitinicon . $status . $resubmitlink,
                     array('class' => 'turnitinsim_status submission_' . $submissionid));
             }
@@ -484,7 +507,7 @@ class plagiarism_plugin_turnitinsim extends plagiarism_plugin {
                     array('class' => 'turnitinsim_eulacontainer', 'id' => 'turnitinsim_eulaaccepted')
                 );
             }
-            
+
             if (!(bool)$features->tenant->require_eula) {
                 return html_writer::tag(
                     'div',
@@ -835,7 +858,7 @@ class plagiarism_plugin_turnitinsim extends plagiarism_plugin {
             if ($qa->get_question()->get_type_name() != 'essay') {
                 continue;
             }
-            
+
             $quizanswer = $qa->get_usage_id().'-'.$qa->get_slot();
 
             $files = $qa->get_last_qt_files('attachments', $context->id);
